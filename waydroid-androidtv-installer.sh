@@ -178,12 +178,6 @@ It will:
     /var/cache/waydroid
     /etc/waydroid
     /etc/waydroid-extra
-    /usr/local/bin/waydroid-atv-launch
-    /usr/share/applications/waydroid-atv.desktop
-    /etc/apt/sources.list.d/waydroid.list
-    /usr/share/keyrings/waydroid.gpg
-    ~/.local/share/waydroid (per-user)
-    ~/.config/Waydroid, ~/.config/waydroid (per-user)
 
 - On Raspberry Pi, it removes any psi/cgroup flags that were added to
   cmdline.txt.
@@ -298,26 +292,8 @@ uninstall_all() {
     log "Waydroid not installed."
   fi
 
-  log "Removing Waydroid data/config (system-wide)..."
+  log "Removing Waydroid data/config..."
   rm -rf /var/lib/waydroid /var/cache/waydroid /etc/waydroid /etc/waydroid-extra
-
-  log "Removing Android TV launcher + desktop entry..."
-  rm -f /usr/local/bin/waydroid-atv-launch
-  rm -f /usr/share/applications/waydroid-atv.desktop
-
-  log "Removing Waydroid APT repo + keyring (if present)..."
-  rm -f /etc/apt/sources.list.d/waydroid.list
-  rm -f /usr/share/keyrings/waydroid.gpg
-
-  log "Removing temp working directory..."
-  rm -rf /tmp/waydroid-atv
-
-  log "Removing per-user Waydroid data (best effort)..."
-  for HOME_DIR in /home/* /root; do
-    [ -d "$HOME_DIR" ] || continue
-    rm -rf "$HOME_DIR/.local/share/waydroid"
-    rm -rf "$HOME_DIR/.config/Waydroid" "$HOME_DIR/.config/waydroid"
-  done
 
   # Remove psi/cgroup flags we may have added (RPi only)
   if is_rpi; then
