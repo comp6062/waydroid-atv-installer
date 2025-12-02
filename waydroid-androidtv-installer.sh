@@ -277,26 +277,85 @@ detect_os() {
 # WAYDROID UNINSTALL
 ###########################################################################
 
-stop_waydroid() {
+clean_waydroid_runtime() {
+  log "Pre-cleaning Waydroid runtime (net + processes)..."
+
+  # Stop container + net helper if present
   systemctl stop waydroid-container 2>/dev/null || true
+  /usr/lib/waydroid/data/scripts/waydroid-net.sh stop 2>/dev/null || true
+
+  # Kill dnsmasq instances bound to the Waydroid subnet / interface
+  pkill -f "dnsmasq.*waydroid" 2>/dev/null || true
+  pkill -f "dnsmasq.*192.168.240.1" 2>/dev/null || true
+  pkill -f "dnsmasq.*waydroid0" 2>/dev/null || true
+
+  # Drop waydroid0 iface if it exists
+  ip link delete waydroid0 2>/dev/null || true
+
+  # Remove NAT rule if present
+  iptables -t nat -D POSTROUTING -s 192.168.240.0/24 ! -d 192.168.240.0/24 -j MASQUERADE 2>/dev/null || true
+
+  # Remove route if present
+  ip route del 192.168.240.0/24 dev waydroid0 2>/dev/null || true
 }
 
-uninstall_all() {
-  log "Stopping Waydroid..."
-  stop_waydroid
+###########################################################################
+# MAIN UNINSTALL
+###########################################################################
 
+uninstall_all() {
+  log "==================== UNINSTALLING WAYDROID + ATV ===================="
+
+  # Stop services and runtime first
+  log "Stopping Waydroid services..."
+  systemctl stop waydroid-container 2>/dev/null || true
+  systemctl disable waydroid-container 2>/dev/null || true
+
+  clean_waydroid_runtime
+
+  log "Purging waydroid package (if installed)..."
   if command -v waydroid >/dev/null 2>&1; then
-    log "Removing waydroid package..."
     apt purge -y waydroid || true
   else
-    log "Waydroid not installed."
+    log "Waydroid binary not found, skipping package purge."
   fi
 
-  log "Removing Waydroid data/config..."
-  rm -rf /var/lib/waydroid /var/cache/waydroid /etc/waydroid /etc/waydroid-extra
+  log "Removing Waydroid data, configs, and images..."
+  rm -rf /var/lib/waydroid \
+         /var/cache/waydroid \
+         /etc/waydroid \
+         /etc/waydroid-extra \
+         /usr/local/share/waydroid \
+         /usr/share/waydroid \
+         /usr/lib/waydroid
 
-  # Remove psi/cgroup flags we may have added (RPi only)
+  log "Removing Waydroid APT repo + keyring (if present)..."
+  rm -f /etc/apt/sources.list.d/waydroid.list
+  rm -f /usr/share/keyrings/waydroid.gpg
+
+  log "Removing Android TV launcher script..."
+  rm -f /usr/local/bin/waydroid-atv-launch
+
+  log "Removing system-wide desktop entries..."
+  rm -f /usr/share/applications/waydroid*.desktop
+  rm -f /usr/share/applications/*Waydroid*.desktop
+  rm -f /usr/share/applications/*waydroid*.desktop
+
+  log "Removing user-level Waydroid desktop entries (all users)..."
+  for HOME_DIR in /home/* /root; do
+    [ -d "$HOME_DIR/.local/share/applications" ] || continue
+    rm -f "$HOME_DIR/.local/share/applications"/waydroid*.desktop 2>/dev/null || true
+    rm -f "$HOME_DIR/.local/share/applications"/*Waydroid*.desktop 2>/dev/null || true
+    rm -f "$HOME_DIR/.local/share/applications"/*waydroid*.desktop 2>/dev/null || true
+  done
+
+  log "Refreshing desktop database (if available)..."
+  update-desktop-database /usr/share/applications 2>/dev/null || true
+
+  # Raspberry Pi boot parameter cleanup
   if is_rpi; then
+    log "Cleaning Raspberry Pi boot flags (psi/cgroup)..."
+
     if [ -f /boot/firmware/cmdline.txt ]; then
       CMDLINE_FILE="/boot/firmware/cmdline.txt"
     elif [ -f /boot/cmdline.txt ]; then
@@ -306,23 +365,29 @@ uninstall_all() {
     fi
 
     if [ -n "$CMDLINE_FILE" ]; then
-      if grep -qw "psi=1" "$CMDLINE_FILE" || \
-         grep -qw "cgroup_enable=cpuset" "$CMDLINE_FILE" || \
-         grep -qw "cgroup_memory=1" "$CMDLINE_FILE" || \
-         grep -qw "cgroup_enable=memory" "$CMDLINE_FILE"; then
-        log "Removing Waydroid flags from $CMDLINE_FILE..."
-        sed -i 's/[[:space:]]*psi=1//g' "$CMDLINE_FILE"
-        sed -i 's/[[:space:]]*cgroup_enable=cpuset//g' "$CMDLINE_FILE"
-        sed -i 's/[[:space:]]*cgroup_memory=1//g' "$CMDLINE_FILE"
-        sed -i 's/[[:space:]]*cgroup_enable=memory//g' "$CMDLINE_FILE"
-        log "Reboot recommended after uninstall."
-      fi
+      sed -i 's/\<psi=1\>//g' "$CMDLINE_FILE"
+      sed -i 's/\<cgroup_enable=cpuset\>//g' "$CMDLINE_FILE"
+      sed -i 's/\<cgroup_memory=1\>//g' "$CMDLINE_FILE"
+      sed -i 's/\<cgroup_enable=memory\>//g' "$CMDLINE_FILE"
+      log "Removed psi/cgroup flags from $CMDLINE_FILE. Reboot recommended."
+    else
+      log "No cmdline.txt found for boot flag cleanup."
     fi
   fi
 
-  log "Uninstall complete."
-  echo "Optional cleanup: sudo apt autoremove -y"
-  exit 0
+  log "Final cleanup: you may optionally run: sudo apt autoremove -y"
+
+  log "==================== UNINSTALL COMPLETE ===================="
+}
+
+###########################################################################
+# ENTRY POINT
+###########################################################################
+
+require_root
+uninstall_all
+exit 0
+
 }
 
 ###########################################################################
