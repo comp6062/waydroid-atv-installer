@@ -42,7 +42,7 @@ Non-APT systems (Arch, Fedora, etc.) are **detected and refused** with a clear e
 From any supported system:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/comp6062/waydroid-androidtv-installer/main/waydroid-androidtv-installer.sh \
+curl -fsSL https://raw.githubusercontent.com/comp6062/waydroid-atv-installer/main/waydroid-androidtv-installer.sh \
   -o waydroid-androidtv-installer.sh
 
 chmod +x waydroid-androidtv-installer.sh
